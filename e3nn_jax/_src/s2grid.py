@@ -29,10 +29,14 @@ The discrete representation is therefore
 .. math:: \{ h_{ij} = f(x_{ij}) \}_{ij}
 """
 
-import e3nn_jax as e3nn
-from e3nn_jax._src.spherical_harmonics import _sh_alpha, _sh_beta
+from typing import Optional
+
 import jax.numpy as jnp
 import numpy as np
+
+import e3nn_jax as e3nn
+
+from .spherical_harmonics import _sh_alpha, _sh_beta
 
 
 def _quadrature_weights_soft(b):
@@ -68,46 +72,7 @@ def _quadrature_weights_soft(b):
     return jnp.asarray(w)
 
 
-def _complete_lmax_res(lmax, res_beta, res_alpha):
-    """
-    determine alpha/beta resolutions if they're not specified
-
-    try to use FFT
-    i.e. 2 * lmax + 1 == res_alpha
-
-    Args:
-        lmax (int)
-        res_beta (int): :math:`N`
-        res_alpha (int): :math:`M`
-    """
-    if res_beta is None:
-        if lmax is not None:
-            res_beta = 2 * (lmax + 1)  # minimum req. to go on sphere and back
-        elif res_alpha is not None:
-            res_beta = 2 * ((res_alpha + 1) // 2)
-        else:
-            raise ValueError("All the entries are None")
-
-    if res_alpha is None:
-        if lmax is not None:
-            if res_beta is not None:
-                res_alpha = max(2 * lmax + 1, res_beta - 1)
-            else:
-                res_alpha = 2 * lmax + 1  # minimum req. to go on sphere and back
-        elif res_beta is not None:
-            res_alpha = res_beta - 1
-
-    if lmax is None:
-        lmax = min(res_beta // 2 - 1, (res_alpha - 1) // 2)  # maximum possible to go on sphere and back
-        # see tests -------------------------------^
-
-    assert res_beta % 2 == 0
-    assert lmax + 1 <= res_beta // 2
-
-    return lmax, res_beta, res_alpha
-
-
-def s2_grid(res_beta: int, res_alpha: int, *, quadrature: str):
+def s2grid(res_beta: int, res_alpha: int, *, quadrature: str):
     r"""grid on the sphere
     Args:
         res_beta (int): :math:`N`
@@ -115,26 +80,30 @@ def s2_grid(res_beta: int, res_alpha: int, *, quadrature: str):
         quadrature (str): "soft" or "gausslegendre"
 
     Returns:
-        z (`numpy.ndarray`): array of shape ``(res_beta)``
-        alphas: `numpy.ndarray`
-            array of shape ``(res_alpha)``
+        y (`numpy.ndarray`): array of shape ``(res_beta)``
+        alphas (`numpy.ndarray`): array of shape ``(res_alpha)``
+        qw (`numpy.ndarray`): array of shape ``(res_beta)``
     """
 
     if quadrature == "soft":
         i = np.arange(res_beta)
         betas = (i + 0.5) / res_beta * jnp.pi
-        z = np.cos(betas)
+        y = np.cos(betas)
+
+        assert res_beta % 2 == 0, "res_beta needs to be even for soft quadrature weights to be computed properly"
+        qw = _quadrature_weights_soft(res_beta // 2) * res_beta**2
     elif quadrature == "gausslegendre":
-        z, _ = np.polynomial.legendre.leggauss(res_beta)
+        y, qw = np.polynomial.legendre.leggauss(res_beta)
+        qw /= 2
     else:
         raise Exception("quadrature needs to be 'soft' or 'gausslegendre'")
 
     i = jnp.arange(res_alpha)
     alphas = i / res_alpha * 2 * jnp.pi
-    return jnp.array(z), alphas
+    return jnp.asarray(y), alphas, jnp.asarray(qw)
 
 
-def spherical_harmonics_s2_grid(lmax: int, res_beta: int, res_alpha: int, *, quadrature: str):
+def spherical_harmonics_s2grid(lmax: int, res_beta: int, res_alpha: int, *, quadrature: str):
     r"""spherical harmonics evaluated on the grid on the sphere
     .. math::
         f(x) = \sum_{l=0}^{l_{\mathit{max}}} F^l \cdot Y^l(x)
@@ -146,19 +115,28 @@ def spherical_harmonics_s2_grid(lmax: int, res_beta: int, res_alpha: int, *, qua
         quadrature (str): "soft" or "gausslegendre"
 
     Returns:
-        z (`jax.numpy.ndarray`): array of shape ``(res_beta)``
+        y (`jax.numpy.ndarray`): array of shape ``(res_beta)``
         alphas (`jax.numpy.ndarray`): array of shape ``(res_alpha)``
-        sh_z (`jax.numpy.ndarray`): array of shape ``(res_beta, (lmax + 1)(lmax + 2)/2)``
+        sh_y (`jax.numpy.ndarray`): array of shape ``(res_beta, (lmax + 1)(lmax + 2)/2)``
         sh_alpha (`jax.numpy.ndarray`): array of shape ``(res_alpha, 2 * lmax + 1)``
+        qw (`jax.numpy.ndarray`): array of shape ``(res_beta)``
     """
-    z, alphas = s2_grid(res_beta, res_alpha, quadrature=quadrature)
+    y, alphas, qw = s2grid(res_beta, res_alpha, quadrature=quadrature)
     sh_alpha = _sh_alpha(lmax, alphas)  # [..., 2 * l + 1]
-    sh_z = _sh_beta(lmax, z)  # [..., (lmax + 1) * (lmax + 2) // 2]
-    return z, alphas, sh_z, sh_alpha
+    sh_y = _sh_beta(lmax, y)  # [..., (lmax + 1) * (lmax + 2) // 2]
+    return y, alphas, sh_y, sh_alpha, qw
 
 
 def from_s2grid(
-    x: jnp.ndarray, lmax: int, normalization="component", lmax_in=None, *, quadrature: str, fft=True, p_val: int, p_arg: int
+    x: jnp.ndarray,
+    lmax: int,
+    *,
+    normalization: str = "component",
+    quadrature: str,
+    lmax_in: Optional[int] = None,
+    fft: bool = True,
+    p_val: int = 1,
+    p_arg: int = -1,
 ):
     r"""Transform signal on the sphere into spherical tensors.
 
@@ -184,8 +162,8 @@ def from_s2grid(
     if lmax_in is None:
         lmax_in = lmax
 
-    _, _, shz, sha = spherical_harmonics_s2_grid(lmax, res_beta, res_alpha, quadrature=quadrature)
-    # sh_z: (res_beta, (l+1)(l+2)/2)
+    _, _, sh_y, sha, qw = spherical_harmonics_s2grid(lmax, res_beta, res_alpha, quadrature=quadrature)
+    # sh_y: (res_beta, (l+1)(l+2)/2)
 
     # normalize such that it is the inverse of ToS2Grid
     n = None
@@ -199,46 +177,42 @@ def from_s2grid(
     else:
         raise Exception("normalization needs to be 'norm', 'component' or 'integral'")
 
-    # get quadrature weights
-    if quadrature == "soft":
-        assert res_beta % 2 == 0, "res_beta needs to be even for soft quadrature weights to be computed properly"
-        qw = _quadrature_weights_soft(res_beta // 2) * res_beta**2  # [b]
-    elif quadrature == "gausslegendre":
-        _, qw = np.polynomial.legendre.leggauss(res_beta)
-        qw /= 2
-    else:
-        raise Exception("quadrature needs to be 'soft' or 'gausslegendre'")
-
     # prepare beta integrand
     m = _expand_matrix(range(lmax + 1))  # [l, m, i]
-    shz = _rollout_sh(shz, lmax)
-    shz = jnp.einsum("lmj,bj,lmi,l,b->mbi", m, shz, m, n, qw)  # [m, b, i]
-
-    size = x.shape[:-2]
-    x = x.reshape(-1, res_beta, res_alpha)
+    sh_y = _rollout_sh(sh_y, lmax)
+    sh_y = jnp.einsum("lmj,bj,lmi,l,b->mbi", m, sh_y, m, n, qw)  # [m, b, i]
 
     # integrate over alpha
     if fft:
-        int_a = rfft(x, lmax) / res_alpha
+        int_a = rfft(x, lmax) / res_alpha  # [..., res_beta, 2*l+1]
     else:
-        int_a = jnp.einsum("zba,am->zbm", x, sha) / res_alpha  # [..., res_beta, 2*l+1]
+        int_a = jnp.einsum("...ba,am->...bm", x, sha) / res_alpha  # [..., res_beta, 2*l+1]
+
     # integrate over beta
-    int_b = jnp.einsum("mbi,zbm->zi", shz, int_a)
+    int_b = jnp.einsum("mbi,...bm->...i", sh_y, int_a)  # [..., irreps]
 
     # convert to IrrepsArray
-    coeffs = int_b.reshape(*size, int_b.shape[1])
     irreps = [(1, (l, p_val * p_arg**l)) for l in range(lmax + 1)]
-    return e3nn.IrrepsArray(irreps, coeffs)
+    return e3nn.IrrepsArray(irreps, int_b)
 
 
-def to_s2grid(tensor: e3nn.IrrepsArray, res=None, normalization="component", *, quadrature: str, fft=True):
+def to_s2grid(
+    tensor: e3nn.IrrepsArray,
+    res_beta: int,
+    res_alpha: int,
+    *,
+    normalization: str = "component",
+    quadrature: str,
+    fft: bool = True,
+):
     r"""Transform spherical tensor into signal on the sphere
 
     The inverse transformation of :func:`e3nn_jax.from_s2grid`
 
     Args:
         tensor (`e3nn_jax.IrrepsArray`): spherical tensor, with coefficient array of shape ``(..., (lmax+1)^2)``
-        res (tuple, optional): resolution of the grid on the sphere ``(beta, alpha)``
+        res_beta (int): number of points on the sphere in the :math:`\theta` direction
+        res_alpha (int): number of points on the sphere in the :math:`\phi` direction
         normalization ({'norm', 'component', 'integral'}): normalization of the spherical tensor
         quadrature (str): "soft" or "gausslegendre"
         fft (bool): True if we use FFT, False if we use the naive implementation
@@ -246,10 +220,12 @@ def to_s2grid(tensor: e3nn.IrrepsArray, res=None, normalization="component", *, 
     Returns:
         `jax.numpy.ndarray`: signal on the sphere of shape ``(..., beta, alpha)``
     """
-    coeffs = tensor.array
-    lmax = int(np.sqrt(coeffs.shape[-1])) - 1
+    lmax = tensor.irreps.ls[-1]
+
     # check l values of irreps
-    assert tensor.irreps.ls == list(range(lmax + 1)), "l values of tensor should range from 0 to lmax"
+    if not all(mul == 1 and ir.l == l for (mul, ir), l in zip(tensor.irreps, range(lmax + 1))):
+        raise ValueError("multiplicities should be ones and irreps should range from l=0 to l=lmax")
+
     # check parities of irreps
     if not (
         {ir.p for mul, ir in tensor.irreps if ir.l % 2 == 0} in [{1}, {-1}, {}]
@@ -257,12 +233,7 @@ def to_s2grid(tensor: e3nn.IrrepsArray, res=None, normalization="component", *, 
     ):
         raise ValueError("irrep parities should be of the form (p_val * p_arg**l) for all l, where p_val and p_arg are ±1")
 
-    if isinstance(res, int) or res is None:
-        lmax, res_beta, res_alpha = _complete_lmax_res(lmax, res, None)
-    else:
-        lmax, res_beta, res_alpha = _complete_lmax_res(lmax, *res)
-
-    _, _, shz, sha = spherical_harmonics_s2_grid(lmax, res_beta, res_alpha, quadrature=quadrature)
+    _, _, sh_y, sha, _ = spherical_harmonics_s2grid(lmax, res_beta, res_alpha, quadrature=quadrature)
 
     n = None
     if normalization == "component":
@@ -280,20 +251,21 @@ def to_s2grid(tensor: e3nn.IrrepsArray, res=None, normalization="component", *, 
 
     m = _expand_matrix(range(lmax + 1))  # [l, m, i]
     # put beta component in summable form
-    shz = _rollout_sh(shz, lmax)
-    shz = jnp.einsum("lmj,bj,lmi,l->mbi", m, shz, m, n)  # [m, b, i]
-
-    size = coeffs.shape[:-1]
-    coeffs = coeffs.reshape(-1, coeffs.shape[-1])
+    sh_y = _rollout_sh(sh_y, lmax)
+    sh_y = jnp.einsum("lmj,bj,lmi,l->mbi", m, sh_y, m, n)  # [m, b, i]
 
     # multiply spherical harmonics by their coefficients
-    signal_b = jnp.einsum("mbi,zi->zbm", shz, coeffs)  # [batch, beta, m]
+    signal_b = jnp.einsum("mbi,...i->...bm", sh_y, tensor.array)  # [batch, beta, m]
 
     if fft:
+        if res_alpha % 2 == 0:
+            raise ValueError("res_alpha must be odd for fft")
+
         signal = irfft(signal_b, res_alpha) * res_alpha  # [..., res_beta, res_alpha]
     else:
-        signal = jnp.einsum("zbm,am->zba", signal_b, sha)  # [..., res_beta, res_alpha]
-    return signal.reshape(*size, *signal.shape[1:])
+        signal = jnp.einsum("...bm,am->...ba", signal_b, sha)  # [..., res_beta, res_alpha]
+
+    return signal
 
 
 def rfft(x: jnp.ndarray, l: int):
@@ -333,7 +305,6 @@ def irfft(x: jnp.ndarray, res: int):
         axis=-1,
     ).reshape((-1, x.shape[-1]))
     x_transformed = jnp.fft.irfft(x_reshaped, res)
-    print((*x.shape[:-1], x_transformed.shape[-1]))
     return x_transformed.reshape((*x.shape[:-1], x_transformed.shape[-1]))
 
 
