@@ -221,8 +221,11 @@ def bessel(x: jnp.ndarray, n: int, x_max: float = 1.0) -> jnp.ndarray:
     Klicpera, J.; Groß, J.; Günnemann, S. Directional Message Passing for Molecular Graphs; ICLR 2020.
     Equation (7)
     """
+    x = jnp.asarray(x)
+    assert isinstance(n, int)
+
     x = x[..., None]
-    n = jnp.arange(1, n + 1)
+    n = jnp.arange(1, n + 1, dtype=x.dtype)
     x_nonzero = jnp.where(x == 0.0, 1.0, x)
     return jnp.sqrt(2.0 / x_max) * jnp.where(
         x == 0,
@@ -243,9 +246,6 @@ def _constraint(x: float, derivative: int, degree: int):
 @lru_cache(maxsize=None)
 def solve_polynomial(constraints) -> jnp.ndarray:
     with jax.ensure_compile_time_eval():
-        jax_enable_x64 = jax.config.read("jax_enable_x64")
-        jax.config.update("jax_enable_x64", True)
-
         degree = len(constraints)
         A = jnp.array(
             [_constraint(x, derivative, degree) for x, derivative, _ in sorted(constraints)],
@@ -254,8 +254,7 @@ def solve_polynomial(constraints) -> jnp.ndarray:
         B = jnp.array([y for _, _, y in sorted(constraints)], dtype=jnp.float64)
         c = jnp.linalg.solve(A, B)
 
-        jax.config.update("jax_enable_x64", jax_enable_x64)
-    return jax.jit(lambda x: jnp.polyval(c[::-1], x))
+    return jax.jit(lambda x: jnp.polyval(c[::-1].astype(x.dtype), x))
 
 
 def poly_envelope(n0: int, n1: int, x_max: float = 1.0) -> Callable[[float], float]:

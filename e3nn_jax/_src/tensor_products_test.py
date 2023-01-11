@@ -1,8 +1,8 @@
-import e3nn_jax as e3nn
 import haiku as hk
 import jax.numpy as jnp
 import numpy as np
-import pytest
+
+import e3nn_jax as e3nn
 
 
 def test_tensor_product():
@@ -31,31 +31,22 @@ def test_fully_connected_tensor_product(keys):
     @hk.without_apply_rng
     @hk.transform
     def f(x1, x2):
-        return e3nn.FullyConnectedTensorProduct("10x0e + 1e")(x1, x2)
+        return e3nn.haiku.FullyConnectedTensorProduct("10x0e + 1e")(x1, x2)
 
     x1 = e3nn.normal("5x0e + 1e", next(keys), (10,))
     x2 = e3nn.normal("3x1e + 2x0e", next(keys), (20, 1))
 
-    with pytest.deprecated_call():
-        w = f.init(next(keys), x1, x2)
-        x3 = f.apply(w, x1, x2)
+    w = f.init(next(keys), x1, x2)
+    x3 = f.apply(w, x1, x2)
 
     assert x3.irreps == e3nn.Irreps("10x0e + 1e")
     assert x3.shape[:-1] == (20, 10)
 
 
-def test_tensor_square(keys):
-    @hk.without_apply_rng
-    @hk.transform
-    def f(x):
-        return e3nn.TensorSquare("1e")(x)
-
-    x = e3nn.normal("2x1e", next(keys), (10,))
-
-    w = f.init(next(keys), x)
-    y = f.apply(w, x)
-    assert y.irreps == e3nn.Irreps("1e")
-    assert y.shape == (10, 3)
+def test_square_normalization(keys):
+    x = e3nn.normal("2x0e + 3x1e + 2x2e + 3e", keys[1], (100_000,))
+    y = e3nn.tensor_square(x)
+    assert jnp.all(jnp.exp(jnp.abs(jnp.log(jnp.mean(y.array**2, 0)))) < 1.1)
 
 
 def test_tensor_square_normalization(keys):
@@ -84,8 +75,8 @@ def test_tensor_square_normalization(keys):
     np.testing.assert_allclose(e3nn.mean(e3nn.norm(y, squared=True), axis=0).array, 1.0, rtol=0.1)
 
 
-def test_tensor_square_and_spherical_harmonics():
-    x = e3nn.normal("1o")
+def test_tensor_square_and_spherical_harmonics(keys):
+    x = e3nn.normal("1o", keys[0])
 
     y1 = e3nn.tensor_square(x, normalized_input=True, irrep_normalization="norm")["2e"]
     y2 = e3nn.spherical_harmonics("2e", x, normalize=False, normalization="norm")

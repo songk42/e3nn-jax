@@ -135,7 +135,7 @@ def spherical_harmonics(
 
     sh = _jited_spherical_harmonics(tuple(ir.l for _, ir in irreps_out), x, normalization, algorithm)
     sh = [jnp.repeat(y[..., None, :], mul, -2) if mul != 1 else y[..., None, :] for (mul, ir), y in zip(irreps_out, sh)]
-    return IrrepsArray.from_list(irreps_out, sh, x.shape[:-1])
+    return IrrepsArray.from_list(irreps_out, sh, x.shape[:-1], x.dtype)
 
 
 @partial(jax.jit, static_argnums=(0, 2, 3), inline=True)
@@ -312,7 +312,7 @@ def legendre(lmax: int, x: jnp.ndarray, phase: float) -> jnp.ndarray:
     """
     x = jnp.asarray(x)
 
-    p = jnp.zeros(((lmax + 1) * (lmax + 2) // 2,) + x.shape)
+    p = jnp.zeros(((lmax + 1) * (lmax + 2) // 2,) + x.shape, x.dtype)
 
     scalef = {
         jnp.dtype("float32"): 1e-35,
@@ -407,7 +407,7 @@ def _sh_alpha(l: int, alpha: jnp.ndarray) -> jnp.ndarray:
     )
 
 
-def _sh_beta(lmax: int, cos_betas):
+def _sh_beta(lmax: int, cos_betas: jnp.ndarray) -> jnp.ndarray:
     r"""Beta dependence of spherical harmonics.
 
     Args:
@@ -425,7 +425,8 @@ def _sh_beta(lmax: int, cos_betas):
             math.sqrt(fractions.Fraction((2 * l + 1) * math.factorial(l - m), 4 * math.factorial(l + m)) / math.pi)
             for l in range(lmax + 1)
             for m in range(l + 1)
-        ]
+        ],
+        sh_y.dtype,
     )
     return sh_y
 
@@ -439,7 +440,7 @@ def _legendre_spherical_harmonics(lmax: int, x: jnp.ndarray, normalize: bool, no
 
     sh_y = _sh_beta(lmax, x[..., 1])  # [..., (lmax + 1) * (lmax + 2) // 2]
 
-    sh = jnp.zeros(x.shape[:-1] + ((lmax + 1) ** 2,))
+    sh = jnp.zeros(x.shape[:-1] + ((lmax + 1) ** 2,), x.dtype)
 
     def f(l, sh):
         def g(m, sh):

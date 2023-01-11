@@ -1,4 +1,4 @@
-__version__ = "0.13.0"
+__version__ = "0.14.0"
 
 from e3nn_jax._src.config import config
 from e3nn_jax._src.rotation import (
@@ -28,6 +28,18 @@ from e3nn_jax._src.rotation import (
     quaternion_to_matrix,
     quaternion_to_angles,
     axis_angle_to_angles,
+    rand_log_coordinates,
+    identity_log_coordinates,
+    compose_log_coordinates,
+    inverse_log_coordinates,
+    log_coordinates_to_matrix,
+    matrix_to_log_coordinates,
+    log_coordinates_to_quaternion,
+    quaternion_to_log_coordinates,
+    log_coordinates_to_axis_angle,
+    axis_angle_to_log_coordinates,
+    log_coordinates_to_angles,
+    angles_to_log_coordinates,
     angles_to_xyz,
     xyz_to_angles,
 )
@@ -39,29 +51,29 @@ from e3nn_jax._src.irreps_array import IrrepsArray, concatenate, stack, mean, no
 from e3nn_jax._src.irreps_array import sum_ as sum
 from e3nn_jax._src.spherical_harmonics import spherical_harmonics, sh, legendre
 from e3nn_jax._src.radial import sus, soft_one_hot_linspace, bessel, poly_envelope, soft_envelope
-from e3nn_jax._src.linear import FunctionalLinear, Linear
+from e3nn_jax._src.linear import FunctionalLinear
+from e3nn_jax._src.linear_haiku import Linear  # TODO remove
 from e3nn_jax._src.core_tensor_product import FunctionalTensorProduct
 from e3nn_jax._src.tensor_products import (
     FunctionalFullyConnectedTensorProduct,
-    FullyConnectedTensorProduct,
-    full_tensor_product,
     tensor_product,
     elementwise_tensor_product,
-    FunctionalTensorSquare,
-    TensorSquare,
     tensor_square,
 )
 from e3nn_jax._src.grad import grad
 from e3nn_jax._src.activation import scalar_activation, normalize_function
 from e3nn_jax._src.gate import gate
-from e3nn_jax._src.batchnorm import BatchNorm
-from e3nn_jax._src.dropout import Dropout
-from e3nn_jax._src.mlp import MultiLayerPerceptron
-from e3nn_jax._src.graph_util import index_add, radius_graph
+from e3nn_jax._src.batchnorm import BatchNorm  # TODO remove
+from e3nn_jax._src.dropout import Dropout  # TODO remove
+from e3nn_jax._src.mlp_haiku import MultiLayerPerceptron  # TODO remove
+from e3nn_jax._src.graph_util import index_add, radius_graph, scatter_sum
 from e3nn_jax._src.reduced_tensor_product import reduced_tensor_product_basis, reduced_symmetric_tensor_product_basis
-from e3nn_jax._src.symmetric_tensor_product import SymmetricTensorProduct
-from e3nn_jax._src.s2grid import from_s2grid, to_s2grid, s2grid
+from e3nn_jax._src.symmetric_tensor_product import SymmetricTensorProduct  # TODO remove
+from e3nn_jax._src.s2grid import from_s2grid, to_s2grid, s2grid, s2grid_vectors, pad_to_plot_on_s2grid
+from e3nn_jax._src.fc_tp_haiku import FullyConnectedTensorProduct  # TODO remove
 
+# make submodules flax and haiku available
+from e3nn_jax import flax, haiku
 
 __all__ = [
     "config",  # not in docs
@@ -91,6 +103,18 @@ __all__ = [
     "quaternion_to_matrix",
     "quaternion_to_angles",
     "axis_angle_to_angles",
+    "rand_log_coordinates",
+    "identity_log_coordinates",
+    "compose_log_coordinates",
+    "inverse_log_coordinates",
+    "log_coordinates_to_matrix",
+    "matrix_to_log_coordinates",
+    "log_coordinates_to_quaternion",
+    "quaternion_to_log_coordinates",
+    "log_coordinates_to_axis_angle",
+    "axis_angle_to_log_coordinates",
+    "log_coordinates_to_angles",
+    "angles_to_log_coordinates",
     "angles_to_xyz",
     "xyz_to_angles",
     "su2_clebsch_gordan",  # not in docs
@@ -120,11 +144,8 @@ __all__ = [
     "FunctionalTensorProduct",
     "FunctionalFullyConnectedTensorProduct",  # deprecated
     "FullyConnectedTensorProduct",  # deprecated
-    "full_tensor_product",  # deprecated
     "tensor_product",
     "elementwise_tensor_product",
-    "FunctionalTensorSquare",  # not in docs
-    "TensorSquare",  # not in docs
     "tensor_square",
     "grad",
     "scalar_activation",
@@ -135,6 +156,7 @@ __all__ = [
     "MultiLayerPerceptron",
     "index_add",
     "radius_graph",
+    "scatter_sum",
     "poly_envelope",
     "soft_envelope",
     "reduced_tensor_product_basis",
@@ -143,4 +165,8 @@ __all__ = [
     "from_s2grid",
     "to_s2grid",
     "s2grid",
+    "s2grid_vectors",
+    "pad_to_plot_on_s2grid",
+    "flax",
+    "haiku",
 ]

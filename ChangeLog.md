@@ -5,6 +5,40 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+### Added
+- `e3nn.s2grid_vectors` and `e3nn.pad_to_plot_on_s2grid` to help plotting signals on the sphere
+- `e3nn.util.assert_output_dtype` to check the output dtype of a function
+
+## [0.14.0] - 2022-12-16
+### Added
+- `IrrepsArray.astype` to cast the underlying array
+- `e3nn.flax.MultiLayerPerceptron` and `e3nn.haiku.MultiLayerPerceptron`
+- `e3nn.IrrepsArray.from_list(..., dtype)`
+- Add sparse tensor product as an option in `e3nn.tensor_product` and related functions. It sparsify the clebsch gordan coefficients. It has more inpact when `fused=True`. It is disabled by default because no improvement was observed in the benchmarks.
+- Add `log_coordinates` along the other parameterizations of SO(3). `e3nn.log_coordinates_to_matrix`, `e3nn.rand_log_coordinates`, etc.
+
+### Fixed
+- set dtype for all `jnp.zeros(..., dtype)` calls in the codebase
+- set dtype for all `jnp.ones(..., dtype)` calls in the codebase
+
+### Removed
+- **[BREAKING]** `e3nn.full_tensor_product` in favor of `e3nn.tensor_product`
+- **[BREAKING]** `e3nn.FunctionalTensorSquare` in favor of `e3nn.tensor_square`
+- **[BREAKING]** `e3nn.TensorSquare` in favor of `e3nn.tensor_square`
+- **[BREAKING]** `e3nn.IrrepsArray.cat` in favor of `e3nn.concatenate`
+- **[BREAKING]** `e3nn.IrrepsArray.randn` in favor of `e3nn.normal`
+- **[BREAKING]** `e3nn.Irreps.randn` in favor of `e3nn.normal`
+- **[BREAKING]** `e3nn.Irreps.transform_by_*` in favor of `e3nn.IrrepsArray.transform_by_*`
+
+## Changed
+- moves `BatchNorm` and `Dropout` to `e3nn.haiku` submodule, will remove them from the main module in the future.
+- move `e3nn.haiku.FullyConnectedTensorProduct` in `haiku` submodule. Undeprecate it because it's faster than `e3nn.tensor_product` followed by `e3nn.Linear`. This is because `opteinsum` optimizes the contraction of the two operations.
+
+## [0.13.1] - 2022-12-14
+### Added
+- `e3nn.scatter_sum` to replace `e3nn.index_add`. `e3nn.index_add` is deprecated.
+- add `flax` and `haiku` submodules. Plan to migrate all modules to `flax` and `haiku` in the future.
+- Implement `e3nn.flax.Linear` and move `e3nn.Linear` in `e3nn.haiku.Linear`.
 
 ## [0.13.0] - 2022-12-07
 ### Changed

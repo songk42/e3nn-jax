@@ -1,12 +1,10 @@
-from functools import partial
-
 import jax
 import jax.numpy as jnp
 
 # matrix
 
 
-def rand_matrix(key, shape):
+def rand_matrix(key, shape, dtype=jnp.float32):
     r"""Random rotation matrix.
 
     Args:
@@ -16,13 +14,13 @@ def rand_matrix(key, shape):
     Returns:
         `jax.numpy.ndarray`: array of shape :math:`(..., 3, 3)`
     """
-    return angles_to_matrix(*rand_angles(key, shape))
+    return angles_to_matrix(*rand_angles(key, shape, dtype=dtype))
 
 
 # angles
 
 
-def identity_angles(shape):
+def identity_angles(shape, dtype=jnp.float32):
     r"""Angles of the identity rotation.
 
     Args:
@@ -33,11 +31,10 @@ def identity_angles(shape):
         beta (`jax.numpy.ndarray`): array of shape :math:`(...)`
         gamma (`jax.numpy.ndarray`): array of shape :math:`(...)`
     """
-    return jnp.zeros(shape), jnp.zeros(shape), jnp.zeros(shape)
+    return jnp.zeros(shape, dtype), jnp.zeros(shape, dtype), jnp.zeros(shape, dtype)
 
 
-@partial(jax.jit, static_argnums=(1,), inline=True)
-def rand_angles(key, shape):
+def rand_angles(key, shape, dtype=jnp.float32):
     r"""Random rotation angles.
 
     Args:
@@ -49,7 +46,7 @@ def rand_angles(key, shape):
         beta (`jax.numpy.ndarray`): array of shape :math:`(...)`
         gamma (`jax.numpy.ndarray`): array of shape :math:`(...)`
     """
-    x, y, z = jax.random.uniform(key, (3,) + shape)
+    x, y, z = jax.random.uniform(key, (3,) + shape, dtype=dtype)
     return 2 * jnp.pi * x, jnp.arccos(2 * z - 1), 2 * jnp.pi * y
 
 
@@ -95,7 +92,7 @@ def inverse_angles(a, b, c):
 # quaternions
 
 
-def identity_quaternion(shape):
+def identity_quaternion(shape, dtype=jnp.float32):
     r"""Quaternion of identity rotation.
 
     Args:
@@ -104,12 +101,11 @@ def identity_quaternion(shape):
     Returns:
         `jax.numpy.ndarray`: array of shape :math:`(..., 4)`
     """
-    q = jnp.zeros(shape, 4)
+    q = jnp.zeros(shape + (4,), dtype=dtype)
     return q.at[..., 0].set(1)  # or -1...
 
 
-@partial(jax.jit, static_argnums=(1,), inline=True)
-def rand_quaternion(key, shape):
+def rand_quaternion(key, shape, dtype=jnp.float32):
     r"""Generate random quaternion.
 
     Args:
@@ -119,10 +115,9 @@ def rand_quaternion(key, shape):
     Returns:
         `jax.numpy.ndarray`: array of shape :math:`(..., 4)`
     """
-    return angles_to_quaternion(*rand_angles(key, shape))
+    return angles_to_quaternion(*rand_angles(key, shape, dtype))
 
 
-@partial(jax.jit, inline=True)
 def compose_quaternion(q1, q2):
     r"""Compose two quaternions: :math:`q_1 \circ q_2`.
 
@@ -162,7 +157,7 @@ def inverse_quaternion(q):
 # axis-angle
 
 
-def rand_axis_angle(key, shape):
+def rand_axis_angle(key, shape, dtype=jnp.float32):
     r"""Generate random rotation as axis-angle.
 
     Args:
@@ -173,7 +168,7 @@ def rand_axis_angle(key, shape):
         axis (`jax.numpy.ndarray`): array of shape :math:`(..., 3)`
         angle (`jax.numpy.ndarray`): array of shape :math:`(...)`
     """
-    return angles_to_axis_angle(*rand_angles(key, shape))
+    return angles_to_axis_angle(*rand_angles(key, shape, dtype))
 
 
 def compose_axis_angle(axis1, angle1, axis2, angle2):
@@ -194,10 +189,64 @@ def compose_axis_angle(axis1, angle1, axis2, angle2):
     )
 
 
+# log coordinates
+
+
+def identity_log_coordinates(shape, dtype=jnp.float32):
+    r"""Log coordinates of identity rotation.
+
+    Args:
+        shape: a tuple of nonnegative integers representing the result shape.
+
+    Returns:
+        log coordinates (`jax.numpy.ndarray`): array of shape :math:`(..., 3)`
+    """
+    return jnp.zeros(shape + (3,), dtype=dtype)
+
+
+def rand_log_coordinates(key, shape, dtype=jnp.float32):
+    r"""Generate random rotation as log coordinates.
+
+    Args:
+        key: a PRNGKey used as the random key.
+        shape: a tuple of nonnegative integers representing the result shape.
+
+    Returns:
+        log coordinates (`jax.numpy.ndarray`): array of shape :math:`(..., 3)`
+    """
+    return axis_angle_to_log_coordinates(*rand_axis_angle(key, shape, dtype))
+
+
+def compose_log_coordinates(log1, log2):
+    r"""Compose :math:`\vec \alpha_1` with :math:`\vec \alpha_2`.
+
+    Args:
+        log1 (`jax.numpy.ndarray`): array of shape :math:`(..., 3)`
+        log2 (`jax.numpy.ndarray`): array of shape :math:`(..., 3)`
+
+    Returns:
+        log coordinates (`jax.numpy.ndarray`): array of shape :math:`(..., 3)`
+    """
+    return quaternion_to_log_coordinates(
+        compose_quaternion(log_coordinates_to_quaternion(log1), log_coordinates_to_quaternion(log2))
+    )
+
+
+def inverse_log_coordinates(log):
+    r"""Inverse of log coordinates.
+
+    Args:
+        log (`jax.numpy.ndarray`): array of shape :math:`(..., 3)`
+
+    Returns:
+        log coordinates (`jax.numpy.ndarray`): array of shape :math:`(..., 3)`
+    """
+    return -log
+
+
 # conversions
 
 
-@partial(jax.jit, inline=True)
 def matrix_x(angle):
     r"""Matrix of rotation around X axis.
 
@@ -221,7 +270,6 @@ def matrix_x(angle):
     )
 
 
-@partial(jax.jit, inline=True)
 def matrix_y(angle):
     r"""Matrix of rotation around Y axis.
 
@@ -245,7 +293,6 @@ def matrix_y(angle):
     )
 
 
-@partial(jax.jit, inline=True)
 def matrix_z(angle):
     r"""Matrix of rotation around Z axis.
 
@@ -277,7 +324,6 @@ def angles_to_matrix(alpha, beta, gamma):
     return matrix_y(alpha) @ matrix_x(beta) @ matrix_y(gamma)
 
 
-@partial(jax.jit, inline=True)
 def matrix_to_angles(R):
     r"""Conversion from matrix to angles.
 
@@ -290,14 +336,13 @@ def matrix_to_angles(R):
         gamma (`jax.numpy.ndarray`): array of shape :math:`(...)`
     """
     # assert jnp.allclose(jnp.linalg.det(R), 1)
-    x = R @ jnp.array([0.0, 1.0, 0.0])
+    x = R @ jnp.array([0.0, 1.0, 0.0], dtype=R.dtype)
     a, b = xyz_to_angles(x)
     R = jnp.swapaxes(angles_to_matrix(a, b, 0.0), -1, -2) @ R
     c = jnp.arctan2(R[..., 0, 2], R[..., 0, 0])
     return a, b, c
 
 
-@partial(jax.jit, inline=True)
 def angles_to_quaternion(alpha, beta, gamma):
     r"""Conversion from angles to quaternion.
 
@@ -310,9 +355,9 @@ def angles_to_quaternion(alpha, beta, gamma):
         q (`jax.numpy.ndarray`): array of shape :math:`(..., 4)`
     """
     alpha, beta, gamma = jnp.broadcast_arrays(alpha, beta, gamma)
-    qa = axis_angle_to_quaternion(jnp.array([0.0, 1.0, 0.0]), alpha)
-    qb = axis_angle_to_quaternion(jnp.array([1.0, 0.0, 0.0]), beta)
-    qc = axis_angle_to_quaternion(jnp.array([0.0, 1.0, 0.0]), gamma)
+    qa = axis_angle_to_quaternion(jnp.array([0.0, 1.0, 0.0], alpha.dtype), alpha)
+    qb = axis_angle_to_quaternion(jnp.array([1.0, 0.0, 0.0], beta.dtype), beta)
+    qc = axis_angle_to_quaternion(jnp.array([0.0, 1.0, 0.0], gamma.dtype), gamma)
     return compose_quaternion(qa, compose_quaternion(qb, qc))
 
 
@@ -328,7 +373,6 @@ def matrix_to_quaternion(R):
     return axis_angle_to_quaternion(*matrix_to_axis_angle(R))
 
 
-@partial(jax.jit, inline=True)
 def axis_angle_to_quaternion(xyz, angle):
     r"""Conversion from axis-angle to quaternion.
 
@@ -346,7 +390,6 @@ def axis_angle_to_quaternion(xyz, angle):
     return jnp.concatenate([c, xyz * s], axis=-1)
 
 
-@partial(jax.jit, inline=True)
 def quaternion_to_axis_angle(q):
     r"""Conversion from quaternion to axis-angle.
 
@@ -367,7 +410,6 @@ def _normalize(x):
     return x / jnp.where(n > 0, n, 1.0)
 
 
-@partial(jax.jit, inline=True)
 def matrix_to_axis_angle(R):
     r"""Conversion from matrix to axis-angle.
 
@@ -408,7 +450,6 @@ def angles_to_axis_angle(alpha, beta, gamma):
     return matrix_to_axis_angle(angles_to_matrix(alpha, beta, gamma))
 
 
-@partial(jax.jit, inline=True)
 def axis_angle_to_matrix(axis, angle):
     r"""Conversion from axis-angle to matrix.
 
@@ -467,10 +508,127 @@ def axis_angle_to_angles(axis, angle):
     return matrix_to_angles(axis_angle_to_matrix(axis, angle))
 
 
+def log_coordinates_to_matrix(log_coordinates: jnp.ndarray) -> jnp.ndarray:
+    r"""Conversion from log coordinates to matrix.
+
+    Args:
+        log_coordinates (`jax.numpy.ndarray`): array of shape :math:`(..., 3)`
+
+    Returns:
+        `jax.numpy.ndarray`: array of shape :math:`(..., 3, 3)`
+    """
+    shape = log_coordinates.shape[:-1]
+    log_coordinates = log_coordinates.reshape(-1, 3)
+
+    X = jnp.array(
+        [
+            [[0.0, 0.0, 0.0], [0.0, 0.0, -1.0], [0.0, 1.0, 0.0]],  # zy
+            [[0.0, 0.0, 1.0], [0.0, 0.0, 0.0], [-1.0, 0.0, 0.0]],  # xz
+            [[0.0, -1.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, 0.0]],  # yx
+        ],
+        dtype=log_coordinates.dtype,
+    )
+
+    R = jax.vmap(jax.scipy.linalg.expm)(jnp.einsum("aij,za->zij", X, log_coordinates))
+    return R.reshape(shape + (3, 3))
+
+
+def log_coordinates_to_axis_angle(log_coordinates):
+    r"""Conversion from log coordinates to axis-angle.
+
+    Args:
+        log_coordinates (`jax.numpy.ndarray`): array of shape :math:`(..., 3)`
+
+    Returns:
+        axis (`jax.numpy.ndarray`): array of shape :math:`(..., 3)`
+        angle (`jax.numpy.ndarray`): array of shape :math:`(...)`
+    """
+    axis = _normalize(log_coordinates)
+    angle = jnp.linalg.norm(log_coordinates, axis=-1)
+    return axis, angle
+
+
+def log_coordinates_to_quaternion(log_coordinates):
+    r"""Conversion from log coordinates to quaternion.
+
+    Args:
+        log_coordinates (`jax.numpy.ndarray`): array of shape :math:`(..., 3)`
+
+    Returns:
+        `jax.numpy.ndarray`: array of shape :math:`(..., 4)`
+    """
+    return axis_angle_to_quaternion(*log_coordinates_to_axis_angle(log_coordinates))
+
+
+def log_coordinates_to_angles(log_coordinates):
+    r"""Conversion from log coordinates to angles.
+
+    Args:
+        log_coordinates (`jax.numpy.ndarray`): array of shape :math:`(..., 3)`
+
+    Returns:
+        alpha (`jax.numpy.ndarray`): array of shape :math:`(...)`
+        beta (`jax.numpy.ndarray`): array of shape :math:`(...)`
+        gamma (`jax.numpy.ndarray`): array of shape :math:`(...)`
+    """
+    return matrix_to_angles(log_coordinates_to_matrix(log_coordinates))
+
+
+def axis_angle_to_log_coordinates(axis, angle):
+    r"""Conversion from axis-angle to log coordinates.
+
+    Args:
+        axis (`jax.numpy.ndarray`): array of shape :math:`(..., 3)`
+        angle (`jax.numpy.ndarray`): array of shape :math:`(...)`
+
+    Returns:
+        `jax.numpy.ndarray`: array of shape :math:`(..., 3)`
+    """
+    axis, angle = jnp.broadcast_arrays(axis, angle[..., None])
+    return axis * angle
+
+
+def matrix_to_log_coordinates(R):
+    r"""Conversion from matrix to log coordinates.
+
+    Args:
+        R (`jax.numpy.ndarray`): array of shape :math:`(..., 3, 3)`
+
+    Returns:
+        `jax.numpy.ndarray`: array of shape :math:`(..., 3)`
+    """
+    return axis_angle_to_log_coordinates(*matrix_to_axis_angle(R))
+
+
+def angles_to_log_coordinates(alpha, beta, gamma):
+    r"""Conversion from angles to log coordinates.
+
+    Args:
+        alpha (`jax.numpy.ndarray`): array of shape :math:`(...)`
+        beta (`jax.numpy.ndarray`): array of shape :math:`(...)`
+        gamma (`jax.numpy.ndarray`): array of shape :math:`(...)`
+
+    Returns:
+        `jax.numpy.ndarray`: array of shape :math:`(..., 3)`
+    """
+    return axis_angle_to_log_coordinates(*angles_to_axis_angle(alpha, beta, gamma))
+
+
+def quaternion_to_log_coordinates(q):
+    r"""Conversion from quaternion to log coordinates.
+
+    Args:
+        q (`jax.numpy.ndarray`): array of shape :math:`(..., 4)`
+
+    Returns:
+        `jax.numpy.ndarray`: array of shape :math:`(..., 3)`
+    """
+    return axis_angle_to_log_coordinates(*quaternion_to_axis_angle(q))
+
+
 # point on the sphere
 
 
-@partial(jax.jit, inline=True)
 def angles_to_xyz(alpha, beta):
     r"""Convert :math:`(\alpha, \beta)` into a point :math:`(x, y, z)` on the sphere.
 
@@ -483,7 +641,7 @@ def angles_to_xyz(alpha, beta):
 
     Examples:
         >>> angles_to_xyz(1.7, 0.0) + 0.0
-        DeviceArray([0., 1., 0.], dtype=float32, weak_type=True)
+        Array([0., 1., 0.], dtype=float32, weak_type=True)
     """
     alpha, beta = jnp.broadcast_arrays(alpha, beta)
     x = jnp.sin(beta) * jnp.sin(alpha)
@@ -492,7 +650,6 @@ def angles_to_xyz(alpha, beta):
     return jnp.stack([x, y, z], axis=-1)
 
 
-@partial(jax.jit, inline=True)
 def xyz_to_angles(xyz):
     r"""Convert a point :math:`\vec r = (x, y, z)` on the sphere into angles :math:`(\alpha, \beta)`.
 
